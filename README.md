@@ -138,6 +138,8 @@ Current Progress Summary
 -   Finalized a clear, detailed proposal favoring a hybrid threshold-RANDAO-VDF beacon design.
 
 -   Documented cryptographic assumptions, adversarial model, and technical workflow for proposed design.
+  
+-   Wrote a blog summarizing my study [here]https://0xsenpai.substack.com/p/understanding-ethereums-randao-mechanism
 
 Next Steps
 ----------
