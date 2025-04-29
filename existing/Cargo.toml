@@ -1,0 +1,12 @@
+[package]
+name = "existing"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# threshold_bls =  "0.1.0" 
+sha2 = { version = "0.10" }
+rand = "0.9.1"
+blst = "0.3"
+# sha2 = "0.10"
+# rand = "0.8"

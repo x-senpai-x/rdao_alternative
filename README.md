@@ -35,49 +35,6 @@ Research Focus
 
 Each vulnerability was formally studied, leveraging academic papers, Ethereum Research posts, and in-depth Ethereum consensus specifications.
 
-Implementation Progress
------------------------
-
-### 1\. Basic RANDAO Prototype (Rust)
-
--   **Goal**: Implement the core RANDAO update cycle mimicking Ethereum's Beacon Chain process.
-
--   **Tech Stack**:
-
-    -   `threshold_bls` crate for BLS signature generation and verification.
-
-    -   `sha2` crate for SHA-256 hashing.
-
--   **Core Steps Implemented**:
-
-    -   BLS Key generation per validator.
-
-    -   Signing the current epoch using private BLS key.
-
-    -   Hashing the signature output.
-
-    -   XOR mixing into the global `randao_mix` accumulator.
-
-Code location: 
-### 2\. Threshold BLS Signing Prototype (Rust)
-
--   **Goal**: Demonstrate threshold signing as a potential unbiasable randomness source.
-
--   **Tech Stack**:
-
-    -   `threshold_bls` crate for polynomial secret sharing and threshold aggregation.
-
--   **Core Steps Implemented**:
-
-    -   Distributed Key Generation (DKG) setup: Splitting the BLS secret key into shares.
-
-    -   Each validator produces a partial signature for the message (epoch data).
-
-    -   Aggregating threshold partials to recover the full BLS signature.
-
-    -   Verifying the aggregated signature against the group public key.
-
-Code location: 
 
 Proposed Solution
 -----------------
@@ -126,6 +83,62 @@ Proposed Solution
 
 -   Extensible to future improvements (e.g., Distributed Validator Technology (DVT)).
 
+
+Implementation Progress
+-----------------------
+
+### 1\. Basic RANDAO Prototype (Rust)
+
+-   **Goal**: Implement the core RANDAO update cycle mimicking Ethereum's Beacon Chain process.
+
+-   **Tech Stack**:
+
+    -   `bls` crate for BLS signature generation and verification.
+
+    -   `sha2` crate for SHA-256 hashing.
+
+-   **Core Steps Implemented**:
+
+    -   BLS Key generation per validator.
+
+    -   Signing the current epoch using private BLS key.
+
+    -   Hashing the signature output.
+
+    -   XOR mixing into the global `randao_mix` accumulator.
+
+Code location: existing/src
+### 2\. Threshold BLS Signing Prototype (Rust)
+
+-   **Goal**: Demonstrate threshold signing as a potential unbiasable randomness source.
+
+-   **Tech Stack**:
+
+    -   `threshold_bls` crate for polynomial secret sharing and threshold aggregation.
+
+-   **Core Steps Implemented**:
+
+    -   Distributed Key Generation (DKG) setup: Splitting the BLS secret key into shares.
+
+    -   Each validator produces a partial signature for the message (epoch data).
+
+    -   Aggregating threshold partials to recover the full BLS signature.
+
+    -   Verifying the aggregated signature against the group public key.
+
+Code location: threshold/src
+
+Alternative Solutions looked at 
+-----------------
+
+Threshold Encryption(commitment + encryption + proof)
+-----------------
+ Here, validators jointly generate a threshold public key (via a distributed key generation) for a homomorphic encryption scheme (threshold encryption typically uses either ElGamal (elliptic-curve DDH) or Paillier (composite residuosity/factoring) as its homomorphic scheme). On each slot, the proposer encrypts a fresh random share under this public key and includes the ciphertext in their block. All ciphertexts from the epoch are homomorphically combined (for example, by multiplying all ElGamal ciphertexts together) into one aggregate ciphertext representing the sum of all secret shares. At epoch’s end, a threshold subset of validators cooperatively decrypt this aggregate ciphertext, recovering the combined randomness. Because each share was encrypted and sealed at proposal time, no single proposer can see or adapt to others’ shares, thus preventing the usual last-revealer bias. If for any reason threshold decryption fails (e.g. insufficient decryptors), the scheme falls back to Ethereum’s existing RANDAO mix for that epoch. Every block proposal would carry a large ciphertext and proof, and the consensus protocol would have to track this state. In short, threshold encryption adds significant protocol complexity, whereas threshold-BLS+VDF mainly adds the (also complex) VDF step but reuses the existing signature infrastructure.
+ Storage and Bandwidth Overhead:
+Under threshold encryption, each block (slot) must carry an encryption share. For example, an ElGamal ciphertext on a 256-bit curve is two group elements (roughly 64–128 bytes) plus any proof. If there are 32 slots per epoch, that’s on the order of 4–8 KB per epoch just for ciphertext (not counting proofs), versus ~3 KB per epoch today (32 blocks × 96-byte BLS sig). Aggregation can be done off-chain or on-chain, but if done on-chain it consumes additional gas. Conversely, a threshold-BLS scheme would have each signer produce a small signature (96 bytes) and the aggregator only publishes one combined signature per epoch or block. In practice, threshold encryption clearly costs more bandwidth/storage per slot than a single BLS signature. Even without VDF, the on-chain payload under encryption-based beacon is much larger and more costly to verify (pairing vs. simple EC exponentiation). (For completeness: VDF outputs also have a size and proof cost, but these are expected to be only a few hundred bytes and are submitted by one node per epoch.)
+The threshold-encryption idea effectively trades one problem (last-proposer bias) for a host of new issues (complex DKG, proofs, larger blocks) with no clear safety advantage once fully analyzed.
+
+
 Current Progress Summary
 ------------------------
 
@@ -141,7 +154,7 @@ Current Progress Summary
 
 -   Documented cryptographic assumptions, adversarial model, and technical workflow for proposed design.
 
-Existing VRFs
+Existing Research
 ------------------------
 | **Beacon / Approach** | **Strengths** | **Weaknesses** |
 | --- | --- | --- |
@@ -155,6 +168,9 @@ Existing VRFs
 *Oracle-based VRF*​[a16zcrypto.com](https://a16zcrypto.com/posts/article/public-randomness-and-randomness-beacons/#:~:text=Chainlink%20VRF%20combines%20this%20approach,or%20thresholded%20to%20a%20group) | Provides verifiable randomness **on-demand** to smart contracts. Easy to use in current Ethereum DApps. Combines VRF with an oracle network, achieving cryptographic proofs of correctness​. | Not a public beacon in itself; serves individual requests. Depends on Chainlink's oracle set, so involves trust in those operators. Transactional gas costs per request. Has limited scalability for large-scale beacon use. |
 | **Ethereum RANDAO (current)** 
 *On-chain XOR-commit*​[arxiv.org](https://arxiv.org/pdf/2409.19883#:~:text=Proof%20of%20Stake%20Ethereum%20provides,to%20the%20public%2C%20it%20is) | Built into Ethereum's consensus (Beacon Chain and EIP-4788). No off-chain trust required. Relatively simple: each proposer's BLS signature is XORed into a running seed​. Fast and low-overhead. | **Biasable**: a proposer withholding oracles can *maximize* next-epoch advantage​. Known "Last Revealer" attacks (tail-of-epoch withholding) significantly bias the outcome​  Without a VDF or threshold aggregation, outputs can be predicted by colluding validators. |
+
+Notes: DFINITY/NEAR and Drand rely on threshold BLS signatures, giving strong unbiasability under honest-majority assumptions​. However, all threshold schemes face key-management complexity​. Chainlink VRF’s oracle model sidesteps these but at the cost of trust and cost overhead​. Ethereum’s on-chain RANDAO is simple and trustless but suffers from strategic bias if multiple late-slot validators collude. 
+The proposed RANDAO+threshold BLS+VDF design aims to combine these benefits: it keeps the on-chain nature of RANDAO while using a group signature (threshold BLS) to prevent a single proposer from controlling the seed, and applies a VDF to eliminate last-revealer bias. This design thus strives to achieve *unbiasability* and *unpredictability* similar to DFINITY/Drand, without requiring a pre-established oracle service.
 
 Next Steps
 ----------
