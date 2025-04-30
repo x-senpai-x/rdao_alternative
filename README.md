@@ -39,39 +39,55 @@ Each vulnerability was formally studied, leveraging academic papers, Ethereum Re
 Proposed Solution
 -----------------
 
-### Threshold BLS-Based Random Beacon with Fallback and VDF
+### Threshold BLS Beacon with One-Epoch Lookahead
 
-**Design Components**:
+**DKG Key Setup** Validators run an off-chain DKG to generate a shared BLS group key and secret shares.
 
--   **Threshold BLS Signatures**:
+**Epoch‑End Signing**
 
-    -   Validators collaboratively produce a threshold BLS signature on the epoch seed.
+During epoch N, each threshold committee member produces a partial BLS signature on a domain-separated message for epoch N + 1.
 
-    -   The threshold signature output is deterministic and unique once enough shares are combined, eliminating the "last-revealer" bias.
+Gossip and aggregate ≥ t shares into a single threshold signature Σₙ.
 
--   **RANDAO Fallback**:
+**On‑Chain Integration**
 
-    -   If threshold signing fails due to offline validators or network failures, fall back to standard RANDAO XOR-based accumulation to maintain liveness.
+Add a next_epoch_randao field or replace the existing randao_mix at epoch boundary with Σₙ.
 
--   **Optional VDF Post-Processing**:
+Verify Σₙ under the group public key (one extra BLS verify per epoch).
+
+**One‑Epoch Delay**
+
+Committees and proposers for epoch N + 1 use Σₙ directly.
+
+Eliminates same-epoch bias and reduces lookahead from 2→1 epochs.
+
+**Fallback Mechanism**
+
+If threshold signing fails by epoch end, revert to legacy RANDAO XOR mix for that epoch to preserve liveness.
+
+
+-   **Future Plan: VDF Post-Processing**:
 
     -   After collecting the threshold signature (or RANDAO fallback mix), run it through a Verifiable Delay Function (VDF) to add delay-based unpredictability.
+    - 
 
 **Cryptographic Assumptions**:
 
--   Hardness of the discrete logarithm problem over elliptic curves (BLS signatures).
+-   BLS Signature Security: Unforgeability under the XDH assumption.
 
--   Correctness and unforgeability of polynomial secret sharing (threshold schemes).
+-   Shamir Secret Sharing: Correctness and unforgeability of polynomial secret sharing (threshold schemes).
 
--   Non-parallelizability and soundness of the VDF computation.
+
 
 **Security Goals**:
 
--   Eliminate biasability (adaptive or selfish mixing) in beacon randomness.
+Eliminate Last-Revealer Bias: No single validator (or coalition < t) can skew randomness.
 
--   Guarantee liveness through fallback mechanisms.
+Preserve Liveness: Fall back to RANDAO if threshold output is unavailable.
 
--   Achieve cryptographic unpredictability with minimal additional complexity.
+Minimize On‑Chain Overhead: Single BLS verify + 48‑byte signature per epoch.
+
+Maintain Compatibility: Leverage existing BLS primitives and seed lookahead logic.
 
 **Advantages of Chosen Approach**:
 
@@ -79,7 +95,7 @@ Proposed Solution
 
 -   Seamless fallback to current RANDAO under partial validator downtime.
 
--   Clear upgrade path compatible with Ethereum's existing validator infrastructure.
+-   Clear Upgrade Path—consensus changes are local to BLS and seed logic.
 
 -   Extensible to future improvements (e.g., Distributed Validator Technology (DVT)).
 
@@ -126,7 +142,7 @@ Code location: existing/src
 
     -   Verifying the aggregated signature against the group public key.
 
-Code location: threshold/src
+Code location: proposed/src
 
 Alternative Solutions looked at 
 -----------------
@@ -150,9 +166,7 @@ Current Progress Summary
 
 -   Implemented threshold BLS signing prototype demonstrating share generation, aggregation, and verification.
 
--   Finalized a clear, detailed proposal favoring a hybrid threshold-RANDAO-VDF beacon design.
-
--   Documented cryptographic assumptions, adversarial model, and technical workflow for proposed design.
+-   Comprehensive protocol specification drafted.
 
 Existing Research
 ------------------------
@@ -177,7 +191,6 @@ Next Steps
 
 -   Expand threshold signature prototype to simulate real validator network behavior (message gossipping, timeouts).
 
--   Implement VDF prototype integration (e.g., simulate VDF computation delay on threshold outputs).
 
 -   Analyze performance implications of the threshold and fallback transitions.
 
